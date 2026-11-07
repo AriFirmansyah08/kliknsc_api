@@ -1,0 +1,25 @@
+<?php
+
+use App\Http\Controllers\Api\AuthController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AgentController;
+use App\Http\Middleware\SlidingSessionToken;
+
+Route::prefix('otp')->middleware('throttle:10,1')->group(function () {
+    Route::post('request', [AuthController::class, 'otpRequest']);
+    Route::post('verify', [AuthController::class, 'otpVerify']);
+});
+
+Route::post('register', [AuthController::class, 'register'])->middleware('throttle:10,1');
+Route::post('login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('password/reset', [AuthController::class, 'passwordReset'])->middleware('throttle:5,1');
+Route::post('agent/cek-nomor', [AgentController::class, 'cekNomor'])->middleware('throttle:30,1');
+Route::post('agent/verifikasi', [AgentController::class, 'verifikasi'])->middleware('throttle:10,1');
+
+Route::middleware(['auth:sanctum', SlidingSessionToken::class])->group(function () {
+    Route::get('user', fn (Request $request) => $request->user());
+    Route::post('logout', [AuthController::class, 'logout']);
+    Route::get('agent/status', [AgentController::class, 'status']);
+    Route::post('agent/submit', [AgentController::class, 'submit']);
+});
