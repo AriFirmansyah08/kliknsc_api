@@ -1,10 +1,10 @@
 <?php
 
+use App\Http\Controllers\Api\AgentController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Middleware\SlidingSessionToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\AgentController;
-use App\Http\Middleware\SlidingSessionToken;
 
 Route::prefix('otp')->middleware('throttle:10,1')->group(function () {
     Route::post('request', [AuthController::class, 'otpRequest']);
@@ -22,4 +22,6 @@ Route::middleware(['auth:sanctum', SlidingSessionToken::class])->group(function 
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('agent/status', [AgentController::class, 'status']);
     Route::post('agent/submit', [AgentController::class, 'submit']);
+    Route::post('agent/dokumen', [AgentController::class, 'uploadDocuments']);
+    Route::post('agent/submit_app', [AgentController::class, 'submitApp']);
 });

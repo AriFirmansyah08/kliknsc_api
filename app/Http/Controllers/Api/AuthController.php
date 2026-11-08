@@ -42,7 +42,6 @@ class AuthController extends Controller
             return response()->json(['message' => 'Nomor HP sudah terdaftar'], 422);
         }
 
-        // Reset untuk nomor yang tidak terdaftar tetap dibalas sukses, supaya tidak bocor info akun
         if ($data['mode'] === 'reset' && !$exists) {
             Log::info('AUTH otp_request reset untuk nomor tidak terdaftar', [
                 'phone' => $this->maskPhone($data['phone']),
@@ -252,7 +251,6 @@ class AuthController extends Controller
             ]);
             return null;
         }
-
         return $record;
     }
 
