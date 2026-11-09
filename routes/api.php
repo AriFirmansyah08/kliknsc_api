@@ -27,6 +27,7 @@ Route::middleware(['auth:sanctum', SlidingSessionToken::class])->group(function 
     Route::post('agent/submit', [AgentController::class, 'submit']);
     Route::post('agent/dokumen', [AgentController::class, 'uploadDocuments']);
     Route::post('agent/submit_app', [AgentController::class, 'submitApp']);
+    Route::post('password/change', [AuthController::class, 'passwordChange']);
 });
 
 Route::prefix('wilayah')->middleware('throttle:60,1')->group(function () {

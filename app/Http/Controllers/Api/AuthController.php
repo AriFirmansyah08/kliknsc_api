@@ -259,10 +259,29 @@ public function passwordReset(Request $request): JsonResponse
         return $user->createToken('mobile', ['*'], now()->addMinutes(self::TOKEN_TTL_MINUTES))
             ->plainTextToken;
     }
-
     private function maskPhone(string $phone): string
     {
         $len = strlen($phone);
         return substr($phone, 0, 4) . str_repeat('*', max($len - 7, 0)) . substr($phone, -3);
     }
+
+    // POST /api/password/change (butuh login)
+public function passwordChange(Request $request): JsonResponse
+{
+    $data = $request->validate([
+        'current_password' => ['required', 'string'],
+        'password' => ['required', self::PASSWORD_RULE, 'different:current_password'],
+    ]);
+
+    $user = $request->user();
+    if (!Hash::check($data['current_password'], $user->password)) {
+        return response()->json(['message' => 'Password lama salah'], 422);
+    }
+
+    $user->forceFill(['password' => Hash::make($data['password'])])->save();
+    // Cabut token di perangkat lain, token yang dipakai sekarang tetap hidup
+    $current = $user->currentAccessToken();
+    $user->tokens()->where('id', '!=', $current->id)->delete();
+    return response()->json(['message' => 'Password berhasil diganti']);
+}
 }
