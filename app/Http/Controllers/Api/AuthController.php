@@ -16,9 +16,9 @@ use Illuminate\Validation\Rule;
 class AuthController extends Controller
 {
     private const MAX_RESET_PER_MONTH = 3;
-    private const OTP_TTL_MINUTES = 5;
+    private const OTP_TTL_MINUTES = 1;
     private const MAX_ATTEMPTS = 5;
-    private const TOKEN_TTL_MINUTES = 5;
+    private const TOKEN_TTL_MINUTES = 10;
 
     private const PHONE_RULE = 'regex:/^08\d{8,11}$/';
     private const PASSWORD_RULE = 'regex:/^(?=.*[A-Za-z])(?=.*\d).{8,}$/';
@@ -167,57 +167,57 @@ class AuthController extends Controller
     }
 
     // POST /api/password/reset
-    public function passwordReset(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'phone' => ['required', self::PHONE_RULE],
-            'otp' => ['required', 'digits:6'],
-            'password' => ['required', self::PASSWORD_RULE],
-        ]);
+public function passwordReset(Request $request): JsonResponse
+{
+    $data = $request->validate([
+        'phone' => ['required', self::PHONE_RULE],
+        'otp' => ['required', 'digits:6'],
+        'password' => ['required', self::PASSWORD_RULE],
+    ]);
 
-        $user = User::where('phone', $data['phone'])->first();
-        if (!$user) {
-            return response()->json(['message' => 'Kode OTP salah atau sudah kedaluwarsa'], 422);
-        }
+    $user = User::where('phone', $data['phone'])->first();
+    $otp = $user ? $this->findValidOtp($data['phone'], $data['otp'], 'reset') : null;
 
-        $used = PasswordResetLog::where('user_id', $user->id)
-            ->where('created_at', '>=', now()->startOfMonth())
-            ->count();
+    if (!$user || !$otp) {
+        return response()->json(['message' => 'Kode OTP salah atau sudah kedaluwarsa'], 422);
+    }
 
-        if ($used >= self::MAX_RESET_PER_MONTH) {
-            Log::warning('AUTH password reset ditolak: batas bulanan', [
-                'user_id' => $user->id,
-                'phone' => $this->maskPhone($data['phone']),
-                'ip' => $request->ip(),
-            ]);
-            return response()->json([
-                'message' => 'Reset password bulan ini sudah mencapai batas 3 kali',
-            ], 429);
-        }
+    $used = PasswordResetLog::where('user_id', $user->id)
+        ->where('created_at', '>=', now()->startOfMonth())
+        ->count();
 
-        $otp = $this->findValidOtp($data['phone'], $data['otp'], 'reset');
-        if (!$otp) {
-            return response()->json(['message' => 'Kode OTP salah atau sudah kedaluwarsa'], 422);
-        }
-
-        DB::transaction(function () use ($user, $otp, $data) {
-            $otp->update(['used_at' => now()]);
-            $user->update(['password' => $data['password']]);
-            PasswordResetLog::create(['user_id' => $user->id]);
-        });
-
-        Log::info('AUTH password reset berhasil', [
+    if ($used >= self::MAX_RESET_PER_MONTH) {
+        Log::warning('AUTH password reset ditolak: batas bulanan', [
             'user_id' => $user->id,
             'phone' => $this->maskPhone($data['phone']),
-            'sisa_bulan_ini' => self::MAX_RESET_PER_MONTH - ($used + 1),
             'ip' => $request->ip(),
         ]);
-
         return response()->json([
-            'message' => 'Password berhasil diganti',
-            'remaining' => self::MAX_RESET_PER_MONTH - ($used + 1),
-        ]);
+            'message' => 'Reset password bulan ini sudah mencapai batas 3 kali',
+        ], 429);
     }
+
+    DB::transaction(function () use ($user, $otp, $data) {
+        $otp->update(['used_at' => now()]);
+        $user->forceFill(['password' => Hash::make($data['password'])])->save();
+        $user->tokens()->delete();
+        PasswordResetLog::create(['user_id' => $user->id]);
+    });
+
+    $remaining = self::MAX_RESET_PER_MONTH - ($used + 1);
+
+    Log::info('AUTH password reset berhasil', [
+        'user_id' => $user->id,
+        'phone' => $this->maskPhone($data['phone']),
+        'sisa_bulan_ini' => $remaining,
+        'ip' => $request->ip(),
+    ]);
+
+    return response()->json([
+        'message' => 'Password berhasil diganti',
+        'remaining' => $remaining,
+    ]);
+}
 
     // POST /api/logout (butuh token)
     public function logout(Request $request): JsonResponse
