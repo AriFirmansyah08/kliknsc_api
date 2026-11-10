@@ -20,7 +20,6 @@ class AgentPendaftaran extends Model
 
     protected static function booted(): void
     {
-        // isi psmprm saat insert, angka acak dan dicek belum dipakai
         static::creating(function (self $model) {
             if (empty($model->psmprm)) {
                 do {

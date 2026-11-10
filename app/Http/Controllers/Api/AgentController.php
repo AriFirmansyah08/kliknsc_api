@@ -1,7 +1,6 @@
 <?php
 
 namespace App\Http\Controllers\Api;
-
 use App\Http\Controllers\Controller;
 use App\Models\Agent;
 use App\Models\AgentPendaftaran;
@@ -17,6 +16,10 @@ use RuntimeException;
 
 class AgentController extends Controller
 {
+
+private const MAX_NIK_SALAH = 3;
+private const TOKEN_TTL_MINUTES = 10;
+
     // GET /api/agent/status
     public function status(Request $request): JsonResponse
     {
@@ -178,69 +181,83 @@ public function submitApp(Request $request): JsonResponse
     }
 
     // POST /api/agent/verifikasi  body: { no_telp, nik, password }
-    public function verifikasi(Request $request, KsAgentRepositoryInterface $ksAgent): JsonResponse
-    {
-        $data = $request->validate([
-            'no_telp' => ['required', 'regex:/^08\d{8,11}$/'],
-            'nik' => ['required', 'digits:16'],
-            'password' => ['required', 'string', 'min:8', 'regex:/[A-Za-z]/', 'regex:/\d/'],
-        ]);
+public function verifikasi(Request $request, KsAgentRepositoryInterface $ksAgent): JsonResponse
+{
+    $data = $request->validate([
+        'no_telp' => ['required', 'regex:/^08\d{8,11}$/'],
+        'nik' => ['required', 'digits:16'],
+        'password' => ['required', 'string', 'min:8', 'regex:/[A-Za-z]/', 'regex:/\d/'],
+    ]);
 
-        if (User::where('phone', $data['no_telp'])->exists()) {
-            return response()->json(['message' => 'Akun sudah terdaftar, silakan login'], 422);
-        }
-
-        $kunciGagal = 'verif-gagal:' . $data['no_telp'];
-        $gagal = (int) Cache::get($kunciGagal, 0);
-        if ($gagal >= 3) {
-            return response()->json(['message' => 'Percobaan NIK habis, hubungi CS'], 429);
-        }
-
-        try {
-            $agen = $ksAgent->cari($data['no_telp']);
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => 'Layanan sedang tidak tersedia'], 503);
-        }
-
-        if (!$agen) {
-            return response()->json(['message' => 'Nomor tidak ditemukan sebagai agen'], 404);
-        }
-
-        if ((string) $agen['NoKtp'] !== $data['nik']) {
-            $gagal++;
-            Cache::put($kunciGagal, $gagal, now()->addDay());
-
-            return response()->json([
-                'message' => 'NIK tidak cocok. Sisa ' . (3 - $gagal) . ' percobaan',
-            ], 422);
-        }
-
-        Cache::forget($kunciGagal);
-
-        $token = DB::transaction(function () use ($data, $agen) {
-            $user = User::create([
-                'phone' => $data['no_telp'],
-                'password' => $data['password'],
-                'name' => $agen['NamaAgen'] ?? null,
-            ]);
-
-            Agent::create([
-                'user_id' => $user->id,
-                'nama_lengkap' => $agen['NamaAgen'] ?? '-',
-                'jenis_agen' => strtolower($agen['JnsAgen'] ?? 'perorangan'),
-                'status' => 'active',
-                'submitted_at' => now(),
-                'activated_at' => now(),
-            ]);
-
-            return $user->createToken('app')->plainTextToken;
-        });
-
-        return response()->json([
-            'message' => 'Verifikasi berhasil',
-            'token' => $token,
-        ]);
+    if (User::where('phone', $data['no_telp'])->exists()) {
+        return response()->json(['message' => 'Akun sudah terdaftar, silakan login'], 422);
     }
+
+    $kunciGagal = 'verif-gagal:' . $data['no_telp'];
+    $gagal = (int) Cache::get($kunciGagal, 0);
+
+    if ($gagal >= self::MAX_NIK_SALAH) {
+        return $this->habisNik();
+    }
+
+    try {
+        $agen = $ksAgent->cari($data['no_telp']);
+    } catch (RuntimeException $e) {
+        return response()->json(['message' => 'Layanan sedang tidak tersedia, coba lagi nanti'], 503);
+    }
+
+    if (!$agen) {
+        return response()->json(['message' => 'Nomor tidak ditemukan sebagai agen'], 404);
+    }
+
+    if ((string) $agen['NoKtp'] !== $data['nik']) {
+        $gagal++;
+        Cache::put($kunciGagal, $gagal, now()->addDay());
+
+        if ($gagal >= self::MAX_NIK_SALAH) {
+            return $this->habisNik();
+        }
+        return response()->json([
+            'message' => 'NIK tidak cocok. Sisa ' . (self::MAX_NIK_SALAH - $gagal) . ' percobaan',
+        ], 422);
+    }
+
+    Cache::forget($kunciGagal);
+
+    $token = DB::transaction(function () use ($data, $agen) {
+        $user = User::create([
+            'phone' => $data['no_telp'],
+            'password' => $data['password'],
+            'name' => $agen['NamaAgen'] ?? null,
+        ]);
+
+        Agent::create([
+            'user_id' => $user->id,
+            'nama_lengkap' => $agen['NamaAgen'] ?? '-',
+            'jenis_agen' => strtolower($agen['JnsAgen'] ?? 'perorangan'),
+            'status' => 'active',
+            'submitted_at' => now(),
+            'activated_at' => now(),
+        ]);
+
+        return $user->createToken('mobile', ['*'], now()->addMinutes(self::TOKEN_TTL_MINUTES))
+            ->plainTextToken;
+    });
+
+    return response()->json([
+        'message' => 'Verifikasi berhasil',
+        'token' => $token,
+        'expires_in' => self::TOKEN_TTL_MINUTES * 60,
+    ]);
+}
+
+private function habisNik(): JsonResponse
+{
+    return response()->json([
+        'message' => 'Percobaan NIK habis. Silakan login lagi.',
+        'habis' => true,
+    ], 429);
+}
 
     // ===== helper foto =====
 
@@ -267,7 +284,7 @@ public function uploadDocuments(Request $request): JsonResponse
 
 private function simpanFoto(AgentPendaftaran $pendaftaran, string $jenis, string $base64): string
 {
-    // buang prefix "data:image/...;base64," kalau ada
+
     $base64 = preg_replace('/^data:image\/\w+;base64,/', '', $base64);
 
     $biner = base64_decode($base64, true);

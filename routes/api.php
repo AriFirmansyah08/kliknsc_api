@@ -5,9 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Middleware\SlidingSessionToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-
 use App\Http\Controllers\Api\LocalController;
-use App\Http\Controllers\Api\WilayahController;
 
 Route::prefix('otp')->middleware('throttle:10,1')->group(function () {
     Route::post('request', [AuthController::class, 'otpRequest']);
@@ -31,10 +29,10 @@ Route::middleware(['auth:sanctum', SlidingSessionToken::class])->group(function 
 });
 
 Route::prefix('wilayah')->middleware('throttle:60,1')->group(function () {
-    Route::get('provinsi', [WilayahController::class, 'provinsi']);
-    Route::get('kota', [WilayahController::class, 'kota']);
-    Route::get('kecamatan', [WilayahController::class, 'kecamatan']);
-    Route::get('kelurahan', [WilayahController::class, 'kelurahan']);
+    Route::get('provinsi', [LocalController::class, 'provinsi']);
+    Route::get('kota', [LocalController::class, 'kota']);
+    Route::get('kecamatan', [LocalController::class, 'kecamatan']);
+    Route::get('kelurahan', [LocalController::class, 'kelurahan']);
 });
 
 Route::prefix('dtdiri')->middleware('throttle:60,1')->group(function () {

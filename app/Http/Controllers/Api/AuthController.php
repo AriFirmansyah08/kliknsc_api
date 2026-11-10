@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Controllers\Api;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 use App\Http\Controllers\Controller;
 use App\Models\OtpCode;
@@ -17,9 +18,8 @@ class AuthController extends Controller
 {
     private const MAX_RESET_PER_MONTH = 3;
     private const OTP_TTL_MINUTES = 1;
-    private const MAX_ATTEMPTS = 5;
+    private const MAX_ATTEMPTS = 3;
     private const TOKEN_TTL_MINUTES = 10;
-
     private const PHONE_RULE = 'regex:/^08\d{8,11}$/';
     private const PASSWORD_RULE = 'regex:/^(?=.*[A-Za-z])(?=.*\d).{8,}$/';
 
@@ -51,7 +51,6 @@ class AuthController extends Controller
         }
 
         $code = (string) random_int(100000, 999999);
-
         OtpCode::where('phone', $data['phone'])
             ->where('mode', $data['mode'])
             ->whereNull('used_at')
@@ -95,45 +94,7 @@ class AuthController extends Controller
         return response()->json(['message' => 'OTP valid']);
     }
 
-    // POST /api/register
-    public function register(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'phone' => ['required', self::PHONE_RULE, 'unique:users,phone'],
-            'password' => ['required', self::PASSWORD_RULE],
-            'otp' => ['required', 'digits:6'],
-        ]);
-
-        $otp = $this->findValidOtp($data['phone'], $data['otp'], 'register');
-        if (!$otp) {
-            return response()->json(['message' => 'Kode OTP salah atau sudah kedaluwarsa'], 422);
-        }
-
-        $user = DB::transaction(function () use ($data, $otp) {
-            $otp->update(['used_at' => now()]);
-
-            return User::create([
-                'name' => $data['phone'],
-                'phone' => $data['phone'],
-                'password' => $data['password'], // di-hash otomatis oleh cast 'hashed'
-            ]);
-        });
-
-        Log::info('AUTH register berhasil', [
-            'user_id' => $user->id,
-            'phone' => $this->maskPhone($data['phone']),
-            'ip' => $request->ip(),
-        ]);
-
-        return response()->json([
-            'message' => 'Akun berhasil dibuat',
-            'token' => $this->issueToken($user),
-            'expires_in' => self::TOKEN_TTL_MINUTES * 60,
-            'user' => $user->only('id', 'phone'),
-        ], 201);
-    }
-
-    // POST /api/login
+        // POST /api/login
     public function login(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -165,6 +126,46 @@ class AuthController extends Controller
             'user' => $user->only('id', 'phone'),
         ]);
     }
+    
+    // POST /api/register
+    public function register(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'phone' => ['required', self::PHONE_RULE, 'unique:users,phone'],
+            'password' => ['required', self::PASSWORD_RULE],
+            'otp' => ['required', 'digits:6'],
+        ]);
+
+        $otp = $this->findValidOtp($data['phone'], $data['otp'], 'register');
+        if (!$otp) {
+            return response()->json(['message' => 'Kode OTP salah atau sudah kedaluwarsa'], 422);
+        }
+
+        $user = DB::transaction(function () use ($data, $otp) {
+            $otp->update(['used_at' => now()]);
+
+            return User::create([
+                'name' => $data['phone'],
+                'phone' => $data['phone'],
+                'password' => $data['password'],
+            ]);
+        });
+
+        Log::info('AUTH register berhasil', [
+            'user_id' => $user->id,
+            'phone' => $this->maskPhone($data['phone']),
+            'ip' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'message' => 'Akun berhasil dibuat',
+            'token' => $this->issueToken($user),
+            'expires_in' => self::TOKEN_TTL_MINUTES * 60,
+            'user' => $user->only('id', 'phone'),
+        ], 201);
+    }
+
+
 
     // POST /api/password/reset
 public function passwordReset(Request $request): JsonResponse
@@ -230,29 +231,44 @@ public function passwordReset(Request $request): JsonResponse
         return response()->json(['message' => 'Logout berhasil']);
     }
 
-    private function findValidOtp(string $phone, string $otp, string $mode): ?OtpCode
-    {
-        $record = OtpCode::where('phone', $phone)
-            ->where('mode', $mode)
-            ->whereNull('used_at')
-            ->latest()
-            ->first();
+    private function findValidOtp(string $phone, string $otp, string $mode): OtpCode
+{
+    $record = OtpCode::where('phone', $phone)
+        ->where('mode', $mode)
+        ->whereNull('used_at')
+        ->latest()
+        ->first();
 
-        if (!$record || $record->expires_at->isPast() || $record->attempts >= self::MAX_ATTEMPTS) {
-            return null;
-        }
-
-        if (!hash_equals($record->code_hash, hash('sha256', $otp))) {
-            $record->increment('attempts');
-            Log::warning('AUTH otp salah', [
-                'phone' => $this->maskPhone($phone),
-                'mode' => $mode,
-                'percobaan' => $record->attempts + 1,
-            ]);
-            return null;
-        }
-        return $record;
+    if (!$record || $record->expires_at->isPast()) {
+        $this->gagalOtp('Kode OTP sudah kedaluwarsa, minta kode baru');
     }
+
+    if ($record->attempts >= self::MAX_ATTEMPTS) {
+        $this->gagalOtp('Percobaan habis, minta kode OTP baru');
+    }
+
+    if (!hash_equals($record->code_hash, hash('sha256', $otp))) {
+        $record->increment('attempts');
+        $sisa = self::MAX_ATTEMPTS - $record->attempts;
+
+        Log::warning('AUTH otp salah', [
+            'phone' => $this->maskPhone($phone),
+            'mode' => $mode,
+            'percobaan' => $record->attempts,
+        ]);
+
+        $this->gagalOtp($sisa > 0
+            ? "Kode OTP salah. Sisa percobaan: {$sisa}"
+            : 'Percobaan habis, minta kode OTP baru');
+    }
+
+    return $record;
+}
+
+private function gagalOtp(string $pesan): never
+{
+    throw new HttpResponseException(response()->json(['message' => $pesan], 422));
+}
 
     private function issueToken(User $user): string
     {
