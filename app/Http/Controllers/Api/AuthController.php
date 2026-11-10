@@ -146,7 +146,9 @@ class AuthController extends Controller
 
             return User::create([
                 'name' => $data['phone'],
+                'status' => 'none',
                 'phone' => $data['phone'],
+                'akses' => 'dtagen',
                 'password' => $data['password'],
             ]);
         });
