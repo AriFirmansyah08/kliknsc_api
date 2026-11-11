@@ -32,13 +32,8 @@ class User extends Authenticatable
         'password' => 'hashed',
     ];
 
-public function newUniqueId(): string
-{
-    return (string) Uuid::v7();
-}
-
-    public function agent()
+    public function newUniqueId(): string
     {
-        return $this->hasOne(Agent::class);
+        return (string) Uuid::v7();
     }
 }

@@ -6,6 +6,7 @@ use App\Http\Middleware\SlidingSessionToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\LocalController;
+use App\Http\Middleware\LogPayload;
 
 Route::prefix('otp')->middleware('throttle:10,1')->group(function () {
     Route::post('request', [AuthController::class, 'otpRequest']);
@@ -22,9 +23,8 @@ Route::middleware(['auth:sanctum', SlidingSessionToken::class])->group(function 
     Route::get('user', fn (Request $request) => $request->user());
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('agent/status', [AgentController::class, 'status']);
-    Route::post('agent/submit', [AgentController::class, 'submit']);
     Route::post('agent/dokumen', [AgentController::class, 'uploadDocuments']);
-    Route::post('agent/submit_app', [AgentController::class, 'submitApp']);
+    Route::post('agent/submit_app', [AgentController::class, 'submitApp'])->middleware(LogPayload::class);
     Route::post('password/change', [AuthController::class, 'passwordChange']);
 });
 

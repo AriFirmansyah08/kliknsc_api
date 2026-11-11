@@ -167,8 +167,6 @@ class AuthController extends Controller
         ], 201);
     }
 
-
-
     // POST /api/password/reset
 public function passwordReset(Request $request): JsonResponse
 {

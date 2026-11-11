@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Illuminate\Support\Facades\Log;
 
 class AgentController extends Controller
 {
@@ -21,71 +22,40 @@ private const MAX_NIK_SALAH = 3;
 private const TOKEN_TTL_MINUTES = 10;
 
     // GET /api/agent/status
-    public function status(Request $request): JsonResponse
-    {
-        $user = $request->user();
-        $agent = $user->agent;
+// GET /api/agent/status
+// GET /api/agent/status
+public function status(Request $request): JsonResponse
+{
+    $user = $request->user();
+    $pendaftaran = AgentPendaftaran::where('psmkode', $user->phone)->first();
 
-        if (!$agent) {
-            $status = 'none';
-        } elseif ($agent->status === Agent::STATUS_DRAFT) {
-            $status = 'none_draft';
-        } else {
-            $status = $agent->status;
-        }
-
-        return response()->json([
-            'status' => $status,
-            'user' => $user->only('name', 'phone'),
-            'agent' => $agent ? [
-                'nama_lengkap' => $agent->nama_lengkap,
-                'kode_agen' => $agent->kode_agen,
-                'jenis_agen' => $agent->jenis_agen,
-                'kba_nama' => $agent->kba_nama,
-                'kba_phone' => $agent->kba_phone,
-                'submitted_at' => $agent->submitted_at?->toIso8601String(),
-            ] : null,
-        ]);
-    }
-
-// POST /api/agent/submit
-    public function submit(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'nama_lengkap' => ['required', 'string', 'max:100'],
-        ]);
-
-        $user = $request->user();
-
-        if ($user->agent && $user->agent->status !== Agent::STATUS_DRAFT) {
-            return response()->json(['message' => 'Pendaftaran agen sudah pernah dikirim'], 422);
-        }
-        Agent::updateOrCreate(
-            ['user_id' => $user->id],
-            [
-                'nama_lengkap' => $data['nama_lengkap'],
-                'jenis_agen' => 'perorangan',
-                'status' => Agent::STATUS_PENDING,
-                'submitted_at' => now(),
-            ]
-        );
-
-        return response()->json(['message' => 'Pendaftaran dikirim', 'status' => 'pending']);
-    }
+    return response()->json([
+        'status' => $user->status ?? 'none',
+        'user' => $user->only('name', 'phone'),
+        'agent' => $pendaftaran ? [
+            'nama_lengkap' => $pendaftaran->psmnama,
+            'kode_agen' => $pendaftaran->psmkdtmp2,
+            'jenis_agen' => $pendaftaran->psmtype,
+            'kba_nama' => null,
+            'kba_phone' => null,
+            'submitted_at' => $pendaftaran->psmtgl,
+        ] : null,
+    ]);
+}
 
 
     // POST /api/agent/submit_app  (data lengkap ke tabel agent)
 public function submitApp(Request $request): JsonResponse
 {
     $data = $request->validate([
-        'jenisAgen' => ['required', 'in:Perorangan'],
+        'jenisAgen' => ['required'],
         'nip' => ['required', 'string', 'max:20'],
         'nik' => ['required', 'regex:/^\d{15,17}$/'],
 
         'namaLengkap' => ['required', 'string', 'max:60'],
         'kotaLahir' => ['required', 'string', 'max:20'],
         'tanggalLahir' => ['required', 'date', 'before:today'],
-        'jenisKelamin' => ['required', 'in:Laki-laki,Perempuan'],
+        'jenisKelamin' => ['required'],
         'golDarah' => ['required', 'in:O,A,B,AB'],
         'kewarganegaraan' => ['required', 'in:WNI,WNA'],
         'agama' => ['required', 'string', 'max:20'],
@@ -101,7 +71,7 @@ public function submitApp(Request $request): JsonResponse
         'kelurahan' => ['required', 'string', 'max:20'],
         'kodePos' => ['required', 'regex:/^\d{5}$/'],
 
-        'punyaNpwp' => ['required', 'in:Ya,Tidak'],
+        'punyaNpwp' => ['required'],
         'nomorNpwp' => ['required_if:punyaNpwp,Ya', 'nullable', 'regex:/^\d{15}$/'],
         'bank' => ['required', 'string', 'max:20'],
         'nomorRekening' => ['required', 'string', 'max:20'],
@@ -109,7 +79,7 @@ public function submitApp(Request $request): JsonResponse
 
         'pekerjaan' => ['required', 'string', 'max:20'],
         'subPekerjaan' => ['required', 'string', 'max:20'],
-        'pernahOtomotif' => ['required', 'in:Ya,Tidak'],
+        'pernahOtomotif' => ['required'],
         'unitPerBulan' => ['required_if:pernahOtomotif,Ya', 'nullable', 'integer', 'min:0', 'max:32767'],
         'tahuDari' => ['required', 'string', 'max:30'],
 
@@ -121,8 +91,8 @@ public function submitApp(Request $request): JsonResponse
     AgentPendaftaran::updateOrCreate(
         ['psmkode' => $user->phone],
         [
-            'psmtype' => 'perorangan',
-            'psmsts' => 'PND', // asumsi kode status pending
+            'psmtype' => $data['jenisAgen'],
+            'psmsts' => 'INPG',
             'psmhp' => null,
             'psmnama' => $data['namaLengkap'],
             'psmtmplahir' => $data['kotaLahir'],
@@ -160,7 +130,11 @@ public function submitApp(Request $request): JsonResponse
             'psmrekkas' => null,
         ]
     );
-
+    $user->update(['status' => 'pending']);
+    Log::info('AGENT submit_app payload', [
+    'request_mentah' => $request->all(),
+    'validated' => $data,
+]);
     return response()->json(['message' => 'Data pendaftaran tersimpan', 'status' => 'pending']);
 }
 
@@ -181,6 +155,7 @@ public function submitApp(Request $request): JsonResponse
     }
 
     // POST /api/agent/verifikasi  body: { no_telp, nik, password }
+// POST /api/agent/verifikasi  body: { no_telp, nik, password }
 public function verifikasi(Request $request, KsAgentRepositoryInterface $ksAgent): JsonResponse
 {
     $data = $request->validate([
@@ -217,6 +192,7 @@ public function verifikasi(Request $request, KsAgentRepositoryInterface $ksAgent
         if ($gagal >= self::MAX_NIK_SALAH) {
             return $this->habisNik();
         }
+
         return response()->json([
             'message' => 'NIK tidak cocok. Sisa ' . (self::MAX_NIK_SALAH - $gagal) . ' percobaan',
         ], 422);
@@ -229,15 +205,7 @@ public function verifikasi(Request $request, KsAgentRepositoryInterface $ksAgent
             'phone' => $data['no_telp'],
             'password' => $data['password'],
             'name' => $agen['NamaAgen'] ?? null,
-        ]);
-
-        Agent::create([
-            'user_id' => $user->id,
-            'nama_lengkap' => $agen['NamaAgen'] ?? '-',
-            'jenis_agen' => strtolower($agen['JnsAgen'] ?? 'perorangan'),
             'status' => 'active',
-            'submitted_at' => now(),
-            'activated_at' => now(),
         ]);
 
         return $user->createToken('mobile', ['*'], now()->addMinutes(self::TOKEN_TTL_MINUTES))
