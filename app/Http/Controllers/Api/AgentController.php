@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
-use App\Models\Agent;
 use App\Models\AgentPendaftaran;
 use App\Models\User;
 use App\Repositories\Contracts\KsAgentRepositoryInterface;
@@ -14,15 +13,13 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class AgentController extends Controller
 {
 
 private const MAX_NIK_SALAH = 3;
 private const TOKEN_TTL_MINUTES = 10;
-
-    // GET /api/agent/status
-// GET /api/agent/status
 // GET /api/agent/status
 public function status(Request $request): JsonResponse
 {
@@ -43,61 +40,25 @@ public function status(Request $request): JsonResponse
     ]);
 }
 
-
-    // POST /api/agent/submit_app  (data lengkap ke tabel agent)
 public function submitApp(Request $request): JsonResponse
 {
-    $data = $request->validate([
-        'jenisAgen' => ['required'],
-        'nip' => ['required', 'string', 'max:20'],
-        'nik' => ['required', 'regex:/^\d{15,17}$/'],
-
-        'namaLengkap' => ['required', 'string', 'max:60'],
-        'kotaLahir' => ['required', 'string', 'max:20'],
-        'tanggalLahir' => ['required', 'date', 'before:today'],
-        'jenisKelamin' => ['required'],
-        'golDarah' => ['required', 'in:O,A,B,AB'],
-        'kewarganegaraan' => ['required', 'in:WNI,WNA'],
-        'agama' => ['required', 'string', 'max:20'],
-        'statusKawin' => ['required', 'string', 'max:20'],
-        'email' => ['nullable', 'email:rfc', 'max:60'],
-
-        'alamat' => ['required', 'string', 'max:100'],
-        'rt' => ['required', 'regex:/^\d{3}$/'],
-        'rw' => ['required', 'regex:/^\d{3}$/'],
-        'provinsi' => ['required', 'string', 'max:20'],
-        'kota' => ['required', 'string', 'max:20'],
-        'kecamatan' => ['required', 'string', 'max:20'],
-        'kelurahan' => ['required', 'string', 'max:20'],
-        'kodePos' => ['required', 'regex:/^\d{5}$/'],
-
-        'punyaNpwp' => ['required'],
-        'nomorNpwp' => ['required_if:punyaNpwp,Ya', 'nullable', 'regex:/^\d{15}$/'],
-        'bank' => ['required', 'string', 'max:20'],
-        'nomorRekening' => ['required', 'string', 'max:20'],
-        'namaRekening' => ['required', 'string', 'max:30'],
-
-        'pekerjaan' => ['required', 'string', 'max:20'],
-        'subPekerjaan' => ['required', 'string', 'max:20'],
-        'pernahOtomotif' => ['required'],
-        'unitPerBulan' => ['required_if:pernahOtomotif,Ya', 'nullable', 'integer', 'min:0', 'max:32767'],
-        'tahuDari' => ['required', 'string', 'max:30'],
-
-        'consent' => ['required', 'accepted'],
-    ]);
+    $data = $request->validate(
+        $this->aturanDaftar($request),
+        $this->aturan()
+    );
 
     $user = $request->user();
 
     AgentPendaftaran::updateOrCreate(
         ['psmkode' => $user->phone],
         [
-            'psmtype' => $data['jenisAgen'],
+            'psmtype' => strtolower($data['jenisAgen']),
             'psmsts' => 'INPG',
             'psmhp' => null,
             'psmnama' => $data['namaLengkap'],
             'psmtmplahir' => $data['kotaLahir'],
             'psmtgllahir' => $data['tanggalLahir'],
-            'psmgender' => $data['jenisKelamin'] === 'Laki-laki' ? 'L' : 'P',
+            'psmgender' => $data['jenisKelamin'] === 'LAKI-LAKI' ? 'L' : 'P',
             'psmktp' => $data['nik'],
             'psmwn' => $data['kewarganegaraan'],
             'psmagama' => $data['agama'],
@@ -130,13 +91,87 @@ public function submitApp(Request $request): JsonResponse
             'psmrekkas' => null,
         ]
     );
+
     $user->update(['status' => 'pending']);
-    Log::info('AGENT submit_app payload', [
-    'request_mentah' => $request->all(),
-    'validated' => $data,
-]);
+
+    Log::info('AGENT submit_app berhasil', [
+        'user_id' => $user->id,
+        'nama' => $data['namaLengkap'],
+        'jenis_agen' => $data['jenisAgen'],
+        'status' => 'pending',
+        'ip' => $request->ip(),
+    ]);
+
     return response()->json(['message' => 'Data pendaftaran tersimpan', 'status' => 'pending']);
 }
+
+private function aturanDaftar(Request $request): array
+{
+    return [
+        'jenisAgen' => ['required', 'in:PERORANGAN,CORPORATE'],
+        'nip' => ['required', 'string', 'max:20'],
+        'nik' => ['required', 'regex:/^\d+$/', function ($attribute, $value, $fail) use ($request) {
+            if ($request->input('jenisAgen') === 'CORPORATE') {
+                if (!preg_match('/^\d{15}$/', $value)) {
+                    $fail('NIK corporate harus 15 digit.');
+                }
+            } elseif (!preg_match('/^\d{16}$/', $value)) {
+                $fail('NIK harus 16 digit.');
+            }
+        }],
+
+        'namaLengkap' => ['required', 'string', 'max:60'],
+        'kotaLahir' => ['required', 'string', 'max:50'],
+        'tanggalLahir' => ['required', 'date', 'before:today'],
+        'jenisKelamin' => ['required', 'in:LAKI-LAKI,PEREMPUAN'],
+        'golDarah' => ['required', 'in:O,A,B,AB'],
+        'kewarganegaraan' => ['required', 'in:WNI,WNA'],
+        'agama' => ['required', 'string', 'max:20'],
+        'statusKawin' => ['required', 'string', 'max:20'],
+        'email' => ['nullable', 'email:rfc', 'max:60'],
+
+        'alamat' => ['required', 'string', 'max:100', function ($attribute, $value, $fail) {
+            if (count(preg_split('/\s+/', trim($value))) < 5) {
+                $fail('Alamat minimal 5 kata.');
+            }
+        }],
+        'rt' => ['required', 'digits:3'],
+        'rw' => ['required', 'digits:3'],
+        'provinsi' => ['required', 'string', 'max:50'],
+        'kota' => ['required', 'string', 'max:50'],
+        'kecamatan' => ['required', 'string', 'max:50'],
+        'kelurahan' => ['required', 'string', 'max:50'],
+        'kodePos' => ['required', 'digits:5'],
+
+        'punyaNpwp' => ['required'],
+        'nomorNpwp' => ['required_if:punyaNpwp,Ya', 'nullable', 'digits:15'],
+        'bank' => ['required', 'string', Rule::notIn(['BANK_SEABANK', 'BANK_JAGO'])],
+        'nomorRekening' => ['required', 'string', 'max:20'],
+        'namaRekening' => ['required', 'string', 'max:30'],
+
+        'pekerjaan' => ['required', 'string', 'max:50'],
+        'subPekerjaan' => ['required', 'string', 'max:50'],
+        'pernahOtomotif' => ['required', 'in:Ya,Tidak'],
+        'unitPerBulan' => ['required_if:pernahOtomotif,Ya', 'nullable', 'integer', 'min:0', 'max:32767'],
+        'tahuDari' => ['required', 'string', 'max:30'],
+
+        'consent' => ['required', 'accepted'],
+    ];
+}
+
+private function aturan(): array
+{
+    return [
+        'required' => ':attribute wajib diisi.',
+        'in' => ':attribute tidak valid.',
+        'digits' => ':attribute harus :digits digit.',
+        'email' => 'Format email tidak valid.',
+        'accepted' => 'Persetujuan wajib dicentang.',
+        'bank.not_in' => 'Bank ini tidak bisa dipilih.',
+    ];
+}
+
+
 
     // POST /api/agent/cek-nomor  body: { no_telp }
     public function cekNomor(Request $request, KsAgentRepositoryInterface $ksAgent): JsonResponse
@@ -154,8 +189,6 @@ public function submitApp(Request $request): JsonResponse
         return response()->json(['ada' => $ada]);
     }
 
-    // POST /api/agent/verifikasi  body: { no_telp, nik, password }
-// POST /api/agent/verifikasi  body: { no_telp, nik, password }
 public function verifikasi(Request $request, KsAgentRepositoryInterface $ksAgent): JsonResponse
 {
     $data = $request->validate([
