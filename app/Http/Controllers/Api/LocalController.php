@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\DB;
 
 class LocalController extends Controller
 {
-    // GET /api/wilayah/provinsi
     public function provinsi()
     {
         return Cache::remember('wilayah.provinsi', 86400, fn () =>
@@ -21,7 +20,6 @@ class LocalController extends Controller
         );
     }
 
-    // GET /api/wilayah/kota?provinsi=DTMKODE_PROVINSI
     public function kota(Request $request)
     {
         $request->validate(['provinsi' => 'required|string|max:20']);
@@ -36,7 +34,6 @@ class LocalController extends Controller
         );
     }
 
-    // GET /api/wilayah/kecamatan?kota=TBLKODE_KOTA
     public function kecamatan(Request $request)
     {
         $request->validate(['kota' => 'required|string|max:20']);
@@ -51,7 +48,6 @@ class LocalController extends Controller
         );
     }
 
-    // GET /api/wilayah/kelurahan?kecamatan=TBDKODE_KECAMATAN
     public function kelurahan(Request $request)
     {
         $request->validate(['kecamatan' => 'required|string|max:20']);
@@ -65,7 +61,7 @@ class LocalController extends Controller
                 ->get()
         );
     }
-    
+
     public function pekerjaan()
     {
         return Cache::remember('dtdiri.pekerjaan', 86400, function () {
