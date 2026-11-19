@@ -18,6 +18,7 @@ Route::post('login', [AuthController::class, 'login'])->middleware('throttle:10,
 Route::post('password/reset', [AuthController::class, 'passwordReset'])->middleware('throttle:5,1');
 Route::post('agent/cek-nomor', [AgentController::class, 'cekNomor'])->middleware('throttle:30,1');
 Route::post('agent/verifikasi', [AgentController::class, 'verifikasi'])->middleware('throttle:10,1');
+Route::get('agent/nip-referensi', [AgentController::class, 'nipReferensi'])->middleware('throttle:30,1');
 
 Route::middleware(['auth:sanctum', SlidingSessionToken::class])->group(function () {
     Route::get('user', fn (Request $request) => $request->user());

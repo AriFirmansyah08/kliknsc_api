@@ -57,7 +57,6 @@ class AgentController extends Controller
                 $this->simpanPendaftaran($user->phone, $data);
                 $user->update(['status' => 'pending']);
 
-                // Kalau gagal, exception melempar rollback untuk simpan dan update status
                 $this->kirimKeKsapi($user->phone, $data);
             });
         } catch (RuntimeException $e) {
@@ -72,7 +71,6 @@ class AgentController extends Controller
             ], 502);
         }
 
-        // Supaya data baru langsung terbaca di cekNomor dan verifikasi
         Cache::forget('ksapi:agen');
 
         Log::info('AGENT submit_app berhasil', [
@@ -85,8 +83,6 @@ class AgentController extends Controller
         return response()->json(['message' => 'Data pendaftaran tersimpan', 'status' => 'pending']);
     }
 
-    // POST /api/ksapisvr
-    // body: { "api_appkliknsc": [{ "Request": "KLIKNSC" }], "Data": [{ ... }] }
     public function addAgent(Request $request): JsonResponse
     {
         $request->validate([
@@ -95,8 +91,7 @@ class AgentController extends Controller
             'Data' => ['required', 'array', 'size:1'],
             'Data.0' => ['required', 'array'],
         ]);
-
-        // ratakan isi Data[0] ke root request supaya aturanDaftar() bisa membaca jenisAgen, nik, dst
+        
         $request->merge($request->input('Data.0', []));
 
         $data = $request->validate(
@@ -185,7 +180,6 @@ class AgentController extends Controller
         ];
     }
 
-    // POST /api/agent/cek-nomor  body: { no_telp }
     public function cekNomor(Request $request, KsAgentRepositoryInterface $ksAgent): JsonResponse
     {
         $data = $request->validate([
@@ -371,11 +365,6 @@ class AgentController extends Controller
             ]
         );
     }
-
-    /**
-     * Kirim ke ksapisvr dengan bentuk yang sama seperti layar 5111.
-     * Nama key harus persis sama dengan linplabels di layar.
-     */
     private function kirimKeKsapi(string $noHp, array $data): void
     {
         $payload = [
@@ -423,4 +412,23 @@ class AgentController extends Controller
             throw new RuntimeException('ksapisvr menolak atau tidak merespons: HTTP ' . $res->status());
         }
     }
+
+public function nipReferensi(KsAgentRepositoryInterface $ksAgent): JsonResponse
+{
+    try {
+        $list = $ksAgent->semuaNipReferensi();
+    } catch (RuntimeException $e) {
+        return response()->json(['message' => 'Layanan sedang tidak tersedia'], 503);
+    }
+
+    return response()->json([
+        'data' => array_map(fn ($item) => [
+            'nip'     => $item['Nip'],
+            'nama'    => $item['Nama'],
+            'cabang'  => $item['Cabang'],
+            'jabatan' => $item['Jabatan'],
+        ], $list),
+    ]);
+}
+
 }

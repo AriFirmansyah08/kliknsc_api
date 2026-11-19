@@ -280,8 +280,6 @@ private function gagalOtp(string $pesan): never
         $len = strlen($phone);
         return substr($phone, 0, 4) . str_repeat('*', max($len - 7, 0)) . substr($phone, -3);
     }
-
-    // POST /api/password/change (butuh login)
 public function passwordChange(Request $request): JsonResponse
 {
     $data = $request->validate([

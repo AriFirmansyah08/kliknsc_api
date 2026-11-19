@@ -35,8 +35,6 @@ class KsAgentRepository implements KsAgentRepositoryInterface
             if ($res->failed()) {
                 throw new RuntimeException('Layanan ksapisvr tidak merespons');
             }
-
-            // Ambil tiap objek agen satu per satu, karena respons tidak selalu valid JSON utuh
             $list = [];
             preg_match_all('/\{[^{}]*\}/', $res->body(), $m);
             foreach ($m[0] as $objek) {
@@ -48,10 +46,34 @@ class KsAgentRepository implements KsAgentRepositoryInterface
             return $list;
         });
     }
-    
+
     private function normalize(string $v): string
     {
         return preg_replace('/\D/', '', $v);
     }
+
+    // KsAgentRepository.php
+public function semuaNipReferensi(): array
+{
+    return Cache::remember('ksapi:nip-referensi', now()->addMinutes(10), function () {
+        $res = Http::timeout(15)->acceptJson()->post(config('services.ksapi.url'), [
+            'api_appkliknipref' => [['NIPREF' => 'NIPREF']],
+        ]);
+
+        if ($res->failed()) {
+            throw new RuntimeException('Layanan ksapisvr tidak merespons');
+        }
+
+        $list = [];
+        preg_match_all('/\{[^{}]*\}/', $res->body(), $m);
+        foreach ($m[0] as $objek) {
+            $data = json_decode($objek, true);
+            if (is_array($data) && isset($data['Nip'])) {
+                $list[] = $data;
+            }
+        }
+        return $list;
+    });
+}
 }
 
