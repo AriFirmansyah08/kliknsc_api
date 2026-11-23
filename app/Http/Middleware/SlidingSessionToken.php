@@ -9,7 +9,7 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class SlidingSessionToken
 {
-    private const IDLE_MINUTES = 5;
+    private const IDLE_MINUTES = 720;
 
     public function handle(Request $request, Closure $next)
     {

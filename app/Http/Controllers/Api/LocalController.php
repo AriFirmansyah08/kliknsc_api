@@ -6,61 +6,39 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use App\Repositories\WilayahRepository;
 
 class LocalController extends Controller
 {
-    public function provinsi()
-    {
-        return Cache::remember('wilayah.provinsi', 86400, fn () =>
-            DB::table('provinsi')
-                ->whereNotNull('dtmkode')
-                ->select('dtmkode as value', 'dtmket as label')
-                ->orderBy('dtmket')
-                ->get()
-        );
-    }
+public function provinsi(WilayahRepository $wilayah)
+{
+    return $wilayah->provinsi();
+}
 
-    public function kota(Request $request)
-    {
-        $request->validate(['provinsi' => 'required|string|max:20']);
+public function kota(Request $request, WilayahRepository $wilayah)
+{
+    $request->validate(['provinsi' => 'required|string|max:20']);
+    return $wilayah->kota($request->provinsi);
+}
 
-        return Cache::remember('wilayah.kota.' . $request->provinsi, 86400, fn () =>
-            DB::table('kota')
-                ->where('tbldtmkode', $request->provinsi)
-                ->whereNotNull('tblkode')
-                ->select('tblkode as value', 'tblket as label')
-                ->orderBy('tblket')
-                ->get()
-        );
-    }
+public function kecamatan(Request $request, WilayahRepository $wilayah)
+{
+    $request->validate([
+        'provinsi' => 'required|string|max:20',
+        'kota'     => 'required|string|max:20',
+    ]);
+    return $wilayah->kecamatan($request->kota, $request->provinsi);
+}
 
-    public function kecamatan(Request $request)
-    {
-        $request->validate(['kota' => 'required|string|max:20']);
-
-        return Cache::remember('wilayah.kecamatan.' . $request->kota, 86400, fn () =>
-            DB::table('kecamatan')
-                ->where('tbdtblkode', $request->kota)
-                ->whereNotNull('tbdkode')
-                ->select('tbdkode as value', 'tbdket as label')
-                ->orderBy('tbdket')
-                ->get()
-        );
-    }
-
-    public function kelurahan(Request $request)
-    {
-        $request->validate(['kecamatan' => 'required|string|max:20']);
-
-        return Cache::remember('wilayah.kelurahan.' . $request->kecamatan, 86400, fn () =>
-            DB::table('kelurahan')
-                ->where('tbttbdkode', $request->kecamatan)
-                ->whereNotNull('tbtkode')
-                ->select('tbtkode as value', 'tbtket as label')
-                ->orderBy('tbtket')
-                ->get()
-        );
-    }
+public function kelurahan(Request $request, WilayahRepository $wilayah)
+{
+    $request->validate([
+        'provinsi'  => 'required|string|max:20',
+        'kota'      => 'required|string|max:20',
+        'kecamatan' => 'required|string|max:20',
+    ]);
+    return $wilayah->kelurahan($request->kecamatan, $request->kota, $request->provinsi);
+}
 
     public function pekerjaan()
     {
@@ -93,7 +71,7 @@ class LocalController extends Controller
     {
         return Cache::remember('dtdiri.bank', 86400, function () {
             return DB::table('bank')
-                ->select('tbdket as value', 'tbdket as label')
+                ->select('tbdkode as value', 'tbdket as label')
                 ->orderBy('tbdket')
                 ->get();
         });

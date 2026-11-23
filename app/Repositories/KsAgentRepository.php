@@ -52,6 +52,7 @@ class KsAgentRepository implements KsAgentRepositoryInterface
         return preg_replace('/\D/', '', $v);
     }
 
+
     // KsAgentRepository.php
 public function semuaNipReferensi(): array
 {

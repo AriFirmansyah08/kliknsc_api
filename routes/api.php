@@ -6,6 +6,7 @@ use App\Http\Middleware\SlidingSessionToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\LocalController;
+use App\Http\Controllers\Api\PengajuanController;
 use App\Http\Middleware\LogPayload;
 
 Route::prefix('otp')->middleware('throttle:10,1')->group(function () {
@@ -20,6 +21,7 @@ Route::post('agent/cek-nomor', [AgentController::class, 'cekNomor'])->middleware
 Route::post('agent/verifikasi', [AgentController::class, 'verifikasi'])->middleware('throttle:10,1');
 Route::get('agent/nip-referensi', [AgentController::class, 'nipReferensi'])->middleware('throttle:30,1');
 
+
 Route::middleware(['auth:sanctum', SlidingSessionToken::class])->group(function () {
     Route::get('user', fn (Request $request) => $request->user());
     Route::post('logout', [AuthController::class, 'logout']);
@@ -28,6 +30,7 @@ Route::middleware(['auth:sanctum', SlidingSessionToken::class])->group(function 
     Route::post('agent/submit_app', [AgentController::class, 'submitApp'])->middleware(LogPayload::class);
     Route::post('password/change', [AuthController::class, 'passwordChange']);
     Route::post('/ksapisvr', [AgentController::class, 'addAgent']);
+    Route::post('pengajuan/m2w', [PengajuanController::class, 'm2w']);
 });
 
 Route::prefix('wilayah')->middleware('throttle:60,1')->group(function () {

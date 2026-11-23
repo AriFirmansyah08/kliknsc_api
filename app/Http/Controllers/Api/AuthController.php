@@ -17,9 +17,9 @@ use Illuminate\Validation\Rule;
 class AuthController extends Controller
 {
     private const MAX_RESET_PER_MONTH = 3;
-    private const OTP_TTL_MINUTES = 1;
+    private const OTP_TTL_MINUTES = 2;
     private const MAX_ATTEMPTS = 3;
-    private const TOKEN_TTL_MINUTES = 60;
+    private const TOKEN_TTL_MINUTES = 720;
     private const PHONE_RULE = 'regex:/^08\d{8,11}$/';
     private const PASSWORD_RULE = 'regex:/^(?=.*[A-Za-z])(?=.*\d).{8,}$/';
 

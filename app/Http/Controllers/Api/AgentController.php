@@ -20,7 +20,7 @@ use RuntimeException;
 class AgentController extends Controller
 {
     private const MAX_NIK_SALAH = 3;
-    private const TOKEN_TTL_MINUTES = 60;
+    private const TOKEN_TTL_MINUTES = 720;
 
     // GET /api/agent/status
     public function status(Request $request): JsonResponse
@@ -91,7 +91,7 @@ class AgentController extends Controller
             'Data' => ['required', 'array', 'size:1'],
             'Data.0' => ['required', 'array'],
         ]);
-        
+
         $request->merge($request->input('Data.0', []));
 
         $data = $request->validate(
@@ -238,7 +238,6 @@ class AgentController extends Controller
         }
 
         Cache::forget($kunciGagal);
-
         $token = DB::transaction(function () use ($data, $agen) {
             $user = User::create([
                 'phone' => $data['no_telp'],
@@ -401,12 +400,16 @@ class AgentController extends Controller
             'tahuDari' => $data['tahuDari'],
         ];
 
-        $res = Http::timeout(15)
-            ->acceptJson()
-            ->post(config('services.ksapi.url'), [
-                'api_appkliknsc' => [['Request' => 'KLIKNSC']],
-                'Data' => [$payload],
-            ]);
+        try {
+    $res = Http::timeout(15)
+        ->acceptJson()
+        ->post(config('services.ksapi.url'), [
+            'api_appkliknsc' => [['Request' => 'KLIKNSC']],
+            'Data' => [$payload],
+        ]);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            throw new RuntimeException('ksapisvr tidak bisa dihubungi: ' . $e->getMessage(), 0, $e);
+        }
 
         if ($res->failed()) {
             throw new RuntimeException('ksapisvr menolak atau tidak merespons: HTTP ' . $res->status());

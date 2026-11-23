@@ -34,5 +34,8 @@ return [
     'ksapi' => [
     'url' => env('KSAPI_URL'),
 ],
+    'pkm2w' => [
+    'url' => env('PKM2W_URL'),
+],
 
 ];
