@@ -13,7 +13,7 @@ class LocalController extends Controller
 public function provinsi(WilayahRepository $wilayah)
 {
     return $wilayah->provinsi();
-}
+    }
 
 public function kota(Request $request, WilayahRepository $wilayah)
 {

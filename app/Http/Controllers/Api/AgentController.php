@@ -45,6 +45,8 @@ class AgentController extends Controller
     // POST /api/agent/submit_app
     public function submitApp(Request $request): JsonResponse
     {
+        $request->merge($this->kapital($request->all()));
+
         $data = $request->validate(
             $this->aturanDaftar($request),
             $this->aturan()
@@ -93,6 +95,7 @@ class AgentController extends Controller
         ]);
 
         $request->merge($request->input('Data.0', []));
+        $request->merge($this->kapital($request->all()));
 
         $data = $request->validate(
             array_merge(
@@ -152,16 +155,17 @@ class AgentController extends Controller
             'kelurahan' => ['required', 'string', 'max:50'],
             'kodePos' => ['required', 'digits:5'],
 
-            'punyaNpwp' => ['required'],
-            'nomorNpwp' => ['required_if:punyaNpwp,Ya', 'nullable', 'digits:15'],
-            'bank' => ['required', 'string', Rule::notIn(['BANK_SEABANK', 'BANK_JAGO'])],
+            'punyaNpwp' => ['required', 'in:YA,TIDAK'],
+            'nomorNpwp' => ['required_if:punyaNpwp,YA', 'nullable', 'digits:15'],
+            'bank' => ['required', 'string', Rule::exists('bank', 'tbdkode'), Rule::notIn(['BANK_SEABANK', 'BANK_JAGO'])],
+
             'nomorRekening' => ['required', 'string', 'max:20'],
             'namaRekening' => ['required', 'string', 'max:30'],
 
             'pekerjaan' => ['required', 'string', 'max:50'],
             'subPekerjaan' => ['required', 'string', 'max:50'],
-            'pernahOtomotif' => ['required', 'in:Ya,Tidak'],
-            'unitPerBulan' => ['required_if:pernahOtomotif,Ya', 'nullable', 'integer', 'min:0', 'max:32767'],
+            'pernahOtomotif' => ['required', 'in:YA,TIDAK'],
+            'unitPerBulan' => ['required_if:pernahOtomotif,YA', 'nullable', 'integer', 'min:0', 'max:32767'],
             'tahuDari' => ['required', 'string', 'max:30'],
 
             'consent' => ['required', 'accepted'],
@@ -178,6 +182,18 @@ class AgentController extends Controller
             'accepted' => 'Persetujuan wajib dicentang.',
             'bank.not_in' => 'Bank ini tidak bisa dipilih.',
         ];
+    }
+
+        // Semua teks jadi kapital, kecuali email dan consent
+    private function kapital(array $input): array
+    {
+        foreach ($input as $key => $value) {
+            if (in_array($key, ['email', 'consent'], true) || !is_string($value)) {
+                continue;
+            }
+            $input[$key] = mb_strtoupper($value);
+        }
+        return $input;
     }
 
     public function cekNomor(Request $request, KsAgentRepositoryInterface $ksAgent): JsonResponse
@@ -346,13 +362,13 @@ class AgentController extends Controller
                 'psmkec' => $data['kecamatan'],
                 'psmkel' => $data['kelurahan'],
                 'psmkdpos' => $data['kodePos'],
-                'psmnpwp' => $data['punyaNpwp'] === 'Ya' ? $data['nomorNpwp'] : null,
+                'psmnpwp' => $data['punyaNpwp'] === 'YA' ? $data['nomorNpwp'] : null,
                 'psmbank' => $data['bank'],
                 'psmrekbank' => $data['nomorRekening'],
                 'psmiddeb' => $data['namaRekening'],
                 'psmkdtmp2' => $data['nip'],
                 'psmoto' => $data['pernahOtomotif'],
-                'psmjmltlk' => $data['pernahOtomotif'] === 'Ya' ? $data['unitPerBulan'] : null,
+                'psmjmltlk' => $data['pernahOtomotif'] === 'YA' ? $data['unitPerBulan'] : null,
                 'psmtgl' => now()->toDateString(),
                 'psmcab' => null,
                 'psmbisnis' => null,
@@ -374,7 +390,7 @@ class AgentController extends Controller
             'namaLengkap' => $data['namaLengkap'],
             'kotaLahir' => $data['kotaLahir'],
             'tanggalLahir' => $data['tanggalLahir'],
-            'jenisKelamin' => $data['jenisKelamin'],
+            'jenisKelamin' => $data['jenisKelamin'] === 'LAKI-LAKI' ? 'L' : 'P',
             'golDarah' => $data['golDarah'],
             'kewarganegaraan' => $data['kewarganegaraan'],
             'agama' => $data['agama'],

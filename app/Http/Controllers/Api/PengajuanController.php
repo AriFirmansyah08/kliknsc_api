@@ -58,6 +58,17 @@ class PengajuanController extends Controller
         try {
             $res = Http::timeout(15)
                 ->acceptJson()
+                ->beforeSending(function ($request) {
+                    // Sembunyikan sebagian NIK & no HP supaya tidak tercatat utuh
+                    $body = $request->body();
+                    $body = preg_replace('/"nik":"(\d{6})\d{6}(\d{4})"/', '"nik":"$1******$2"', $body);
+                    $body = preg_replace('/"NoHp":"(\d{4})\d+(\d{2})"/', '"NoHp":"$1****$2"', $body);
+
+                    Log::info('PENGAJUAN M2W payload dikirim', [
+                        'url' => $request->url(),
+                        'body' => $body,
+                    ]);
+                })
                 ->post(config('services.pkm2w.url'), $payload);
         } catch (ConnectionException $e) {
             Log::error('PENGAJUAN M2W: pkm2w tidak terhubung', [
@@ -81,6 +92,8 @@ class PengajuanController extends Controller
         Log::info('PENGAJUAN M2W berhasil', [
             'user_id' => $request->user()->id,
             'ip' => $request->ip(),
+            'status' => $res->status(),
+            'response' => $res->body(),
         ]);
 
         return response()->json(['message' => 'Pengajuan M2W terkirim', 'status' => 'terkirim']);
