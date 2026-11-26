@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\LocalController;
 use App\Http\Controllers\Api\PengajuanController;
+use App\Http\Controllers\Api\KsCallbackController;
 use App\Http\Middleware\LogPayload;
 
 Route::prefix('otp')->middleware('throttle:10,1')->group(function () {
@@ -20,6 +21,9 @@ Route::post('password/reset', [AuthController::class, 'passwordReset'])->middlew
 Route::post('agent/cek-nomor', [AgentController::class, 'cekNomor'])->middleware('throttle:30,1');
 Route::post('agent/verifikasi', [AgentController::class, 'verifikasi'])->middleware('throttle:10,1');
 Route::get('agent/nip-referensi', [AgentController::class, 'nipReferensi'])->middleware('throttle:30,1');
+
+// Callback hasil verifikasi agen dari KSystem SCT3203 (token di body, bukan sanctum)
+Route::post('ksapi/agent-verifikasi', [KsCallbackController::class, 'agentVerifikasi'])->middleware('throttle:60,1');
 
 
 Route::middleware(['auth:sanctum', SlidingSessionToken::class])->group(function () {

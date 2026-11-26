@@ -370,13 +370,6 @@ class AgentController extends Controller
                 'psmoto' => $data['pernahOtomotif'],
                 'psmjmltlk' => $data['pernahOtomotif'] === 'YA' ? $data['unitPerBulan'] : null,
                 'psmtgl' => now()->toDateString(),
-                'psmcab' => null,
-                'psmbisnis' => null,
-                'psmlokjl' => null,
-                'psmkdtmp1' => null,
-                'psmstsbill2' => null,
-                'psmnambank2' => null,
-                'psmrekkas' => null,
             ]
         );
     }

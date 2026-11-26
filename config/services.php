@@ -33,6 +33,7 @@ return [
 
     'ksapi' => [
     'url' => env('KSAPI_URL'),
+    'callback_token' => env('KSAPI_CALLBACK_TOKEN'),
 ],
     'pkm2w' => [
     'url' => env('PKM2W_URL'),

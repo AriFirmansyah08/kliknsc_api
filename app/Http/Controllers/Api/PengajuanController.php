@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AgentPendaftaran;
+use App\Repositories\Contracts\KsAgentRepositoryInterface;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,7 +15,7 @@ use RuntimeException;
 class PengajuanController extends Controller
 {
     // POST /api/pengajuan/m2w
-    public function m2w(Request $request): JsonResponse
+    public function m2w(Request $request, KsAgentRepositoryInterface $ksAgent): JsonResponse
     {
         $data = $request->validate([
             'nik' => ['required', 'digits:16'],
@@ -34,24 +36,65 @@ class PengajuanController extends Controller
             'pilSumber' => ['required', 'string', 'max:50'],
         ], $this->aturan());
 
+        $akun = $request->user();
+
+        // data agen yang login, diambil dari server
+        $agen = AgentPendaftaran::where('psmkode', $akun->phone)->first();
+
+        if (!$agen) {
+            return response()->json([
+                'message' => 'Data agen tidak ditemukan',
+                'status' => 'error',
+            ], 422);
+        }
+
+        // cabang diambil dari data referensi NIP, sama seperti saat agen didaftarkan
+        try {
+            $cabang = $this->cariCabangNip($ksAgent, (string) $agen->psmkdtmp2);
+        } catch (RuntimeException $e) {
+            Log::error('PENGAJUAN M2W: referensi NIP tidak tersedia', [
+                'user_id' => $akun->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Layanan sedang tidak tersedia, coba lagi nanti',
+                'status' => 'error',
+            ], 503);
+        }
+
+        if ($cabang === null) {
+            return response()->json([
+                'message' => 'Cabang agen tidak ditemukan di data referensi NIP',
+                'status' => 'error',
+            ], 422);
+        }
+
         $payload = [
             'api_appklikspkm2w' => [[
                 'Request' => 'BUKUTAMU',
-                'Data' => [[
-                    'StatusBtm' => 'OPEN',
-                    'NoHp' => $data['noHp'],
-                    'nik' => $data['nik'],
-                    'namaLengkap' => $data['namaLengkap'],
-                    'alamat' => $data['alamat'],
-                    'rt' => $data['rt'],
-                    'rw' => $data['rw'],
-                    'provinsi' => $data['provinsi'],
-                    'kota' => $data['kota'],
-                    'kecamatan' => $data['kecamatan'],
-                    'kelurahan' => $data['kelurahan'],
-                    'sumberPk' => $data['sumberPk'],
-                    'pilSumber' => $data['pilSumber'],
-                ]],
+            ]],
+            'Data' => [[
+                'StatusBtm' => 'OPEN',
+                'NoHp' => $data['noHp'],
+                'nik' => $data['nik'],
+                'namaLengkap' => $data['namaLengkap'],
+                'alamat' => $data['alamat'],
+                'rt' => $data['rt'],
+                'rw' => $data['rw'],
+                'provinsi' => $data['provinsi'],
+                'kota' => $data['kota'],
+                'kecamatan' => $data['kecamatan'],
+                'kelurahan' => $data['kelurahan'],
+                'sumberPk' => $data['sumberPk'],
+                'pilSumber' => $data['pilSumber'],
+
+                // identitas penginput (agen), dari server
+                'nikAgent' => $agen->psmktp,
+                'lokasiJual' => $cabang,
+                'nipAgen' => $agen->psmkdtmp2,
+                'namaAgen' => $agen->psmnama,
+                'noHpAgen' => $akun->phone,
             ]],
         ];
 
@@ -59,7 +102,6 @@ class PengajuanController extends Controller
             $res = Http::timeout(15)
                 ->acceptJson()
                 ->beforeSending(function ($request) {
-                    // Sembunyikan sebagian NIK & no HP supaya tidak tercatat utuh
                     $body = $request->body();
                     $body = preg_replace('/"nik":"(\d{6})\d{6}(\d{4})"/', '"nik":"$1******$2"', $body);
                     $body = preg_replace('/"NoHp":"(\d{4})\d+(\d{2})"/', '"NoHp":"$1****$2"', $body);
@@ -72,7 +114,7 @@ class PengajuanController extends Controller
                 ->post(config('services.pkm2w.url'), $payload);
         } catch (ConnectionException $e) {
             Log::error('PENGAJUAN M2W: pkm2w tidak terhubung', [
-                'user_id' => $request->user()->id,
+                'user_id' => $akun->id,
                 'error' => $e->getMessage(),
             ]);
 
@@ -81,7 +123,7 @@ class PengajuanController extends Controller
 
         if ($res->failed()) {
             Log::error('PENGAJUAN M2W: pkm2w menolak', [
-                'user_id' => $request->user()->id,
+                'user_id' => $akun->id,
                 'status' => $res->status(),
                 'body' => $res->body(),
             ]);
@@ -90,13 +132,28 @@ class PengajuanController extends Controller
         }
 
         Log::info('PENGAJUAN M2W berhasil', [
-            'user_id' => $request->user()->id,
+            'user_id' => $akun->id,
             'ip' => $request->ip(),
             'status' => $res->status(),
             'response' => $res->body(),
         ]);
 
         return response()->json(['message' => 'Pengajuan M2W terkirim', 'status' => 'terkirim']);
+    }
+
+    private function cariCabangNip(KsAgentRepositoryInterface $ksAgent, string $nip): ?string
+    {
+        $nipCari = strtoupper(trim($nip));
+
+        foreach ($ksAgent->semuaNipReferensi() as $item) {
+            if (strtoupper(trim((string) ($item['Nip'] ?? ''))) === $nipCari) {
+                $cabang = trim((string) ($item['Cabang'] ?? ''));
+
+                return $cabang !== '' ? $cabang : null;
+            }
+        }
+
+        return null;
     }
 
     private function gagalKirim(): JsonResponse
