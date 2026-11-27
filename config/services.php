@@ -38,5 +38,8 @@ return [
     'pkm2w' => [
     'url' => env('PKM2W_URL'),
 ],
+    'pkhmc' => [
+        'url' => env('PKHMC_URL'),
+    ],
 
 ];

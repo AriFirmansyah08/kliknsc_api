@@ -35,6 +35,7 @@ Route::middleware(['auth:sanctum', SlidingSessionToken::class])->group(function 
     Route::post('password/change', [AuthController::class, 'passwordChange']);
     Route::post('/ksapisvr', [AgentController::class, 'addAgent']);
     Route::post('pengajuan/m2w', [PengajuanController::class, 'm2w']);
+    Route::post('pengajuan/hmc', [PengajuanController::class, 'hmc']);
 });
 
 Route::prefix('wilayah')->middleware('throttle:60,1')->group(function () {
